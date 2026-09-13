@@ -1,11 +1,10 @@
 import os
 import logging
-import asyncio
 import threading
 from flask import Flask
 import yt_dlp
-from telegram import Update
-from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
+from telegram import Update, InlineQueryResultAudio, InlineQueryResultArticle, InputTextMessageContent
+from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, InlineQueryHandler, filters
 
 # Logging သတ်မှတ်ခြင်း
 logging.basicConfig(
@@ -14,7 +13,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# 1. UptimeRobot အတွက် Flask Web Server တည်ဆောက်ခြင်း
+# 1. UptimeRobot အတွက် Flask Web Server
 app = Flask(__name__)
 
 @app.route('/')
@@ -31,21 +30,69 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_name = update.effective_user.first_name
     welcome_message = (
         f"မင်္ဂလာပါ {user_name}!\n\n"
-        "ကျွန်တော်ကတော့ **No-Video Music Bot** ဖြစ်ပါတယ်။ "
-        "YouTube သို့မဟုတ် Music လင့်ခ်တစ်ခု ပို့လိုက်ရုံနဲ့ MP3 အသံဖိုင်သက်သက် ပြန်ထုတ်ပေးပါမယ်။"
+        "ကျွန်တော့်ကို သီချင်းအမည်ရိုက်ထည့်ပြီး ရှာခိုင်းလို့ရသလို၊ YouTube လင့်ခ်ပို့ပြီးလည်း MP3 ယူလို့ရပါတယ်။\n\n"
+        "🔎 **အသုံးပြုပုံ:**\n"
+        "• Chat ထဲမှာ သီချင်းနာမည်ရိုက်ပြီး YouTube ကနေ ရှာခိုင်းနိုင်ပါတယ်။\n"
+        "• (သို့) YouTube လင့်ခ် တိုက်ရိုက်ပို့နိုင်ပါတယ်။"
     )
     await update.message.reply_text(welcome_message, parse_mode="Markdown")
 
-async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    url = update.message.text.strip()
-    
-    if not url.startswith("http"):
-        await update.message.reply_text("ကျေးဇူးပြု၍ မှန်ကန်သော YouTube လင့်ခ် (URL) တစ်ခု ပို့ပေးပါ။")
+# Inline Search (Telegram Chat ထဲမှာ @botname လို့ရိုက်ပြီး သီချင်းရှာရန်)
+async def inline_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.inline_query.query
+    if not query:
         return
 
-    msg = await update.message.reply_text("🎵 သီချင်းကို ရှာဖွေနေပါပြီ၊ ခဏစောင့်ပါ...")
-    output_template = "song.%(ext)s"
+    results = []
+    ydl_opts = {
+        'default_search': 'ytsearch5',
+        'quiet': True,
+        'extract_flat': True
+    }
+
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            search_results = ydl.extract_info(query, download=False)
+            if 'entries' in search_results:
+                for idx, entry in enumerate(search_results['entries']):
+                    video_url = f"https://www.youtube.com/watch?v={entry.get('id')}"
+                    title = entry.get('title', 'Unknown Title')
+                    duration = entry.get('duration', 0)
+                    thumbnail = entry.get('thumbnail', '')
+
+                    results.append(
+                        InlineQueryResultArticle(
+                            id=str(idx),
+                            title=title,
+                            description=pformat_duration(duration),
+                            thumbnail_url=thumbnail,
+                            input_message_content=InputTextMessageContent(video_url)
+                        )
+                    )
+        await update.inline_query.answer(results, cache_time=1)
+    except Exception as e:
+        logger.error(f"Inline search error: {e}")
+
+def pformat_duration(seconds):
+    if not seconds:
+        return ""
+    m, s = divmod(seconds, 60)
+    return f"Duration: {m}:{s:02d}"
+
+# လင့်ခ် သို့မဟုတ် Chat ထဲက စာသားကို လက်ခံပြီး သီချင်းပို့ပေးရန်
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.strip()
     
+    # URL ဟုတ်မဟုတ် သို့မဟုတ် သီချင်းနာမည်ဖြစ်မဖြစ် စစ်ဆေးခြင်း
+    if text.startswith("http"):
+        url = text
+    else:
+        # လင့်ခ်မဟုတ်ဘဲ နာမည်ဖြစ်နေရင် YouTube မှာ ပထမဆုံးထွက်လာတာကို ရှာပေးမည်
+        url = f"ytsearch1:{text}"
+
+    msg = await update.message.reply_text("🎵 သီချင်းကို ရှာဖွေပြီး ဒေါင်းလုဒ်လုပ်နေပါပြီ၊ ခဏစောင့်ပါ...")
+
+    output_template = "song.%(ext)s"
     ydl_opts = {
         'format': 'bestaudio/best',
         'postprocessors': [{
@@ -60,6 +107,10 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
+            # ytsearch သုံးထားရင် entry ထဲက ယူရပါမည်
+            if 'entries' in info:
+                info = info['entries'][0]
+            
             filename = ydl.prepare_filename(info)
             mp3_file = os.path.splitext(filename)[0] + ".mp3"
 
@@ -79,7 +130,7 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         logger.error(f"Error: {e}")
-        await msg.edit_text("❌ သီချင်းဒေါင်းလုဒ်လုပ်ရာတွင် အမှားအယွင်းရှိသွားပါသည်။ လင့်ခ်မှန်မမှန် ပြန်စစ်ပါ။")
+        await msg.edit_text("❌ သီချင်းဒေါင်းလုဒ်လုပ်ရာတွင် အမှားအယွင်းရှိသွားပါသည်။ နာမည် သို့မဟုတ် လင့်ခ်မှန်မမှန် ပြန်စစ်ပါ။")
 
 def main():
     TOKEN = os.environ.get("BOT_TOKEN")
@@ -87,17 +138,17 @@ def main():
         print("Error: BOT_TOKEN environment variable not set!")
         return
 
-    # Flask ကို Thread သီးသန့်နဲ့ စတင်ရန် (Render က Web Service အတွက် Port တောင်းဆိုလို့ပါ)
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
 
-    # Telegram Bot ကို စတင်ရန်
     application = ApplicationBuilder().token(TOKEN).build()
+    
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), download_music))
+    application.add_handler(InlineQueryHandler(inline_search))
+    application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
 
-    print("Bot is running with web server...")
+    print("Bot is running with search features...")
     application.run_polling()
 
 if __name__ == '__main__':
