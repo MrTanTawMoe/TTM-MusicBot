@@ -1,5 +1,8 @@
 import os
 import logging
+import asyncio
+import threading
+from flask import Flask
 import yt_dlp
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
@@ -11,7 +14,19 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Bot စတင်သည့်အခါ ပြမည့် Start Command
+# 1. UptimeRobot အတွက် Flask Web Server တည်ဆောက်ခြင်း
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Bot is alive and running!"
+
+def run_flask():
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
+
+
+# 2. Telegram Bot Logic များ
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_name = update.effective_user.first_name
     welcome_message = (
@@ -21,20 +36,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(welcome_message, parse_mode="Markdown")
 
-# လင့်ခ်လက်ခံပြီး Audio ပြန်ပို့မည့် Function
 async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text.strip()
     
-    # URL ဟုတ်မဟုတ် စစ်ဆေးခြင်း
     if not url.startswith("http"):
         await update.message.reply_text("ကျေးဇူးပြု၍ မှန်ကန်သော YouTube လင့်ခ် (URL) တစ်ခု ပို့ပေးပါ။")
         return
 
     msg = await update.message.reply_text("🎵 သီချင်းကို ရှာဖွေနေပါပြီ၊ ခဏစောင့်ပါ...")
-
     output_template = "song.%(ext)s"
     
-    # yt-dlp Configuration (Audio သက်သက် MP3 ဖြင့် Download ရန်)
     ydl_opts = {
         'format': 'bestaudio/best',
         'postprocessors': [{
@@ -50,12 +61,10 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             filename = ydl.prepare_filename(info)
-            # Extension ကို mp3 သို့ ပြောင်းရန်
             mp3_file = os.path.splitext(filename)[0] + ".mp3"
 
         await msg.edit_text("📤 Telegram ဆီသို့ ပို့ဆောင်နေပါပြီ...")
 
-        # Telegram သို့ Audio ပို့ခြင်း
         with open(mp3_file, 'rb') as audio:
             await update.message.reply_audio(
                 audio=audio,
@@ -63,7 +72,6 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 performer=info.get('uploader', 'Unknown Artist')
             )
 
-        # ပို့ပြီးပါက Server ပေါ်မှ ဖိုင်ကို ဖျက်ပစ်ရန်
         if os.path.exists(mp3_file):
             os.remove(mp3_file)
             
@@ -74,20 +82,22 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.edit_text("❌ သီချင်းဒေါင်းလုဒ်လုပ်ရာတွင် အမှားအယွင်းရှိသွားပါသည်။ လင့်ခ်မှန်မမှန် ပြန်စစ်ပါ။")
 
 def main():
-    # Render Environment Variable မှ Bot Token ကို ယူမည်
     TOKEN = os.environ.get("BOT_TOKEN")
-    
     if not TOKEN:
         print("Error: BOT_TOKEN environment variable not set!")
         return
 
-    application = ApplicationBuilder().token(TOKEN).build()
+    # Flask ကို Thread သီးသန့်နဲ့ စတင်ရန် (Render က Web Service အတွက် Port တောင်းဆိုလို့ပါ)
+    flask_thread = threading.Thread(target=run_flask)
+    flask_thread.daemon = True
+    flask_thread.start()
 
-    # Handlers များ ထည့်သွင်းခြင်း
+    # Telegram Bot ကို စတင်ရန်
+    application = ApplicationBuilder().token(TOKEN).build()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), download_music))
 
-    print("Bot is running...")
+    print("Bot is running with web server...")
     application.run_polling()
 
 if __name__ == '__main__':
