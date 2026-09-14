@@ -29,13 +29,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_name = update.effective_user.first_name
     welcome_message = (
         f"မင်္ဂလာပါ {user_name}!\n\n"
-        "ဒီဘော့က SoundCloud ကနေ သီချင်းနာမည်ရိုက်ထည့်ပြီး ရှာဖွေ MP3 ယူနိုင်ပါပြီ။\n\n"
+        "ဒီဘော့က SoundCloud ကနေ သီချင်းရှာပြီး MP3 ပို့ပေးနိုင်ပါတယ်။\n\n"
         "🔎 **အသုံးပြုပုံ:**\n"
-        "• Chat ထဲမှာ သီချင်းနာမည် (သို့) SoundCloud လင့်ခ် တိုက်ရိုက်ပို့နိုင်ပါတယ်။"
+        "• **Private Chat (တစ်ဦးချင်း):** သီချင်းနာမည် (သို့) လင့်ခ်ကို တိုက်ရိုက်ပို့ပါ။\n"
+        "• **Group Chat (အုပ်စုထဲ):** `/play [သီချင်းနာမည်]` (သို့) လင့်ခ်ဖြင့် အသုံးပြုပါ။"
     )
     await update.message.reply_text(welcome_message, parse_mode="Markdown")
 
-# Inline Search (SoundCloud ဖြင့် ရှာရန် scsearch သုံးထားသည်)
+# Inline Search (SoundCloud ဖြင့် ရှာရန်)
 async def inline_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.inline_query.query
     if not query:
@@ -80,11 +81,24 @@ def pformat_duration(seconds):
 # မက်ဆေ့ခ်ျ လက်ခံပြီး SoundCloud မှ သီချင်းဒေါင်းရန်
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
-    
-    if text.startswith("http"):
-        url = text
+    chat_type = update.message.chat.type
+
+    # Group ထဲမှာဆိုရင် /play နဲ့ စမှ လုပ်ဆောင်မည်၊ Private မှာဆိုရင် ပုံမှန်စာသားလက်ခံမည်
+    if chat_type in ["group", "supergroup"]:
+        if text.startswith("/play"):
+            query = text.replace("/play", "", 1).strip()
+        else:
+            return  # Group ထဲမှာ သာမန်စကားပြောရင် Bot က လုံးဝ မတုံ့ပြန်ပါ
     else:
-        url = f"scsearch1:{text}"
+        query = text
+
+    if not query:
+        return
+
+    if query.startswith("http"):
+        url = query
+    else:
+        url = f"scsearch1:{query}"
 
     msg = await update.message.reply_text("🎵 SoundCloud မှ သီချင်းကို ရှာဖွေနေပါပြီ၊ ခဏစောင့်ပါ...")
 
@@ -143,7 +157,7 @@ def main():
     application.add_handler(InlineQueryHandler(inline_search))
     application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
 
-    print("Bot is running with SoundCloud backend...")
+    print("Bot is running with Group /play filter...")
     application.run_polling()
 
 if __name__ == '__main__':
