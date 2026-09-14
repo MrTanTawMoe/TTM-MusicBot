@@ -32,9 +32,23 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "ဒီဘော့က SoundCloud ကနေ သီချင်းရှာပြီး MP3 ပို့ပေးနိုင်ပါတယ်။\n\n"
         "🔎 **အသုံးပြုပုံ:**\n"
         "• **Private Chat (တစ်ဦးချင်း):** သီချင်းနာမည် (သို့) လင့်ခ်ကို တိုက်ရိုက်ပို့ပါ။\n"
-        "• **Group Chat (အုပ်စုထဲ):** `/play [သီချင်းနာမည်]` (သို့) လင့်ခ်ဖြင့် အသုံးပြုပါ။"
+        "• **Group Chat (အုပ်စုထဲ):** `/play [သီချင်းနာမည်]` (သို့) လင့်ခ်ဖြင့် အသုံးပြုပါ။\n"
+        "• **အကူအညီရယူရန်:** `/help` ကို အသုံးပြုပါ။"
     )
     await update.message.reply_text(welcome_message, parse_mode="Markdown")
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    help_message = (
+        "🤖 **TTM Music Bot - အကူအညီ**\n\n"
+        "ဒီဘော့ကို အသုံးပြု၍ သီချင်းများကို SoundCloud မှ ရှာဖွေဒေါင်းလုဒ်လုပ်နိုင်ပါသည်:\n\n"
+        "• **Private Chat (တစ်ဦးချင်း):**\n"
+        "  - သီချင်းနာမည် (သို့မဟုတ်) လင့်ခ်ကို တိုက်ရိုက်ရိုက်ပို့ပါ။\n\n"
+        "• **Group Chat (အုပ်စုထဲ):**\n"
+        "  - `/play [သီချင်းနာမည်]` (သို့မဟုတ်) `/play [လင့်ခ်]` ဟု ရိုက်၍ အသုံးပြုပါ။\n\n"
+        "• **Inline Search:**\n"
+        "  - `@ttm_music_bot [သီချင်းနာမည်]` ဟု Chat ဘားတွင် ရိုက်၍ ရှာဖွေနိုင်ပါသည်။"
+    )
+    await update.message.reply_text(help_message, parse_mode="Markdown")
 
 # Inline Search (SoundCloud ဖြင့် ရှာရန်)
 async def inline_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -153,13 +167,14 @@ def main():
     application = ApplicationBuilder().token(TOKEN).build()
     
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("play", play_music))
     application.add_handler(InlineQueryHandler(inline_search))
     
-    # Private Chat မှာသာ စာသားကို တိုက်ရိုက်လက်ခံမည် (Group မှာ စကားပြောတာတွေ ဝင်မရှုပ်စေရန်)
+    # Private Chat မှာသာ စာသားကို တိုက်ရိုက်လက်ခံမည်
     application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND) & filters.ChatType.PRIVATE, handle_private_message))
 
-    print("Bot is running successfully with Command and Private handlers...")
+    print("Bot is running successfully with all handlers...")
     application.run_polling()
 
 if __name__ == '__main__':
