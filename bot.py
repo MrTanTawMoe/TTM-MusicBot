@@ -78,21 +78,10 @@ def pformat_duration(seconds):
     m, s = divmod(seconds, 60)
     return f"Duration: {m}:{s:02d}"
 
-# မက်ဆေ့ခ်ျ လက်ခံပြီး SoundCloud မှ သီချင်းဒေါင်းရန်
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.strip()
-    chat_type = update.message.chat.type
-
-    # Group ထဲမှာဆိုရင် /play နဲ့ စမှ လုပ်ဆောင်မည်၊ Private မှာဆိုရင် ပုံမှန်စာသားလက်ခံမည်
-    if chat_type in ["group", "supergroup"]:
-        if text.startswith("/play"):
-            query = text.replace("/play", "", 1).strip()
-        else:
-            return  # Group ထဲမှာ သာမန်စကားပြောရင် Bot က လုံးဝ မတုံ့ပြန်ပါ
-    else:
-        query = text
-
+# Common function: သီချင်းရှာပြီး ဒေါင်းလုဒ်လုပ်ကာ ပို့ပေးသော Logic
+async def process_and_send_song(update: Update, query: str):
     if not query:
+        await update.message.reply_text("❌ ကျေးဇူးပြု၍ သီချင်းနာမည် (သို့) လင့်ခ် ထည့်ပါ။ ဥပမာ: /play shape of you")
         return
 
     if query.startswith("http"):
@@ -141,6 +130,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Error: {e}")
         await msg.edit_text("❌ သီချင်းဒေါင်းလုဒ်လုပ်ရာတွင် အမှားအယွင်းရှိသွားပါသည်။ နာမည် သို့မဟုတ် လင့်ခ်မှန်မမှန် ပြန်စစ်ပါ။")
 
+# /play Command Handler (Group အတွက်)
+async def play_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = " ".join(context.args)
+    await process_and_send_song(update, query)
+
+# Private Chat အတွက် သာမန် Message Handler
+async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.message.text.strip()
+    await process_and_send_song(update, query)
+
 def main():
     TOKEN = os.environ.get("BOT_TOKEN")
     if not TOKEN:
@@ -154,10 +153,13 @@ def main():
     application = ApplicationBuilder().token(TOKEN).build()
     
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("play", play_music))
     application.add_handler(InlineQueryHandler(inline_search))
-    application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
+    
+    # Private Chat မှာသာ စာသားကို တိုက်ရိုက်လက်ခံမည် (Group မှာ စကားပြောတာတွေ ဝင်မရှုပ်စေရန်)
+    application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND) & filters.ChatType.PRIVATE, handle_private_message))
 
-    print("Bot is running with Group /play filter...")
+    print("Bot is running successfully with Command and Private handlers...")
     application.run_polling()
 
 if __name__ == '__main__':
