@@ -13,7 +13,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# 1. UptimeRobot အတွက် Flask Web Server (Free plan မှာ အိပ်မသွားစေရန်)
+# 1. UptimeRobot အတွက် Flask Web Server
 app = Flask(__name__)
 
 @app.route('/')
@@ -36,7 +36,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(welcome_message, parse_mode="Markdown")
 
-# Inline Search (Telegram Chat ထဲမှာ @botname လို့ရိုက်ပြီး သီချင်းရှာရန်)
 async def inline_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.inline_query.query
     if not query:
@@ -47,6 +46,7 @@ async def inline_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         'default_search': 'ytsearch5',
         'quiet': True,
         'extract_flat': True,
+        'cookiefile': 'cookies.txt',  # YouTube Login Cookies
         'extractor_args': {'youtube': {'player_client': ['android']}}
     }
 
@@ -79,11 +79,9 @@ def pformat_duration(seconds):
     m, s = divmod(seconds, 60)
     return f"Duration: {m}:{s:02d}"
 
-# လင့်ခ် သို့မဟုတ် Chat ထဲက စာသားကို လက်ခံပြီး သီချင်းပို့ပေးရန်
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     
-    # URL ဟုတ်မဟုတ် သို့မဟုတ် သီချင်းနာမည်ဖြစ်မဖြစ် စစ်ဆေးခြင်း
     if text.startswith("http"):
         url = text
     else:
@@ -100,6 +98,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'preferredquality': '192',
         }],
         'outtmpl': output_template,
+        'cookiefile': 'cookies.txt',  # YouTube Login Cookies ချိတ်ပေးခြင်း
         'extractor_args': {'youtube': {'player_client': ['android']}},
         'quiet': True,
     }
@@ -137,19 +136,17 @@ def main():
         print("Error: BOT_TOKEN environment variable not set!")
         return
 
-    # Flask Server ကို Background တွင် အလုပ်လုပ်ရန် Thread စတင်ခြင်း
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
 
-    # Telegram Bot ကို စတင်ခြင်း
     application = ApplicationBuilder().token(TOKEN).build()
     
     application.add_handler(CommandHandler("start", start))
     application.add_handler(InlineQueryHandler(inline_search))
     application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
 
-    print("Bot is running with Android Client config...")
+    print("Bot is running with Cookies & Android Client...")
     application.run_polling()
 
 if __name__ == '__main__':
